@@ -1,5 +1,6 @@
 export function buildEmail({ name, company, notes, email, unsubscribeUrl }) {
   const firstName = (name || 'there').split(' ')[0];
+  const mailingAddress = process.env.MAILING_ADDRESS || '';
 
   const observation = notes
     ? notes
@@ -22,7 +23,7 @@ export function buildEmail({ name, company, notes, email, unsubscribeUrl }) {
   <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
   <p style="font-size:12px;color:#888;">
     <a href="${unsubscribeUrl}" style="color:#888;">Unsubscribe</a> · 
-    You received this because I thought there might be a fit.
+    You received this because I thought there might be a fit.${mailingAddress ? `<br>${mailingAddress}` : ''}
   </p>
 </body>
 </html>`;
@@ -34,7 +35,7 @@ ${observation} and noticed a few things that could be improved — especially ar
 I build clean, fast websites for people who want something that actually converts. Would you be open to a short chat this week?
 
 – Your Name
-Web Developer
+Web Developer${mailingAddress ? `\n${mailingAddress}` : ''}
 
 Unsubscribe: ${unsubscribeUrl}`;
 

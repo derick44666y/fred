@@ -8,6 +8,7 @@ import {
   addLead as dbAddLead
 } from './db.js';
 import { buildEmail } from './templates.js';
+import { classifyFailure } from './pacing.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.FROM_EMAIL || 'You <you@yourdomain.com>';
@@ -20,7 +21,20 @@ export { DAILY_LIMIT };
 export async function sendToLead(lead) {
   const count = getTodayCount();
   if (count >= DAILY_LIMIT) {
-    return { success: false, error: `Daily limit of ${DAILY_LIMIT} reached` };
+    return { success: false, error: `Daily limit of ${DAILY_LIMIT} reached`, failure: 'daily_limit' };
+  }
+
+  // Test / dry-run hook: exercise pacing and the cool down without touching the
+  // provider. Never set this in normal use.
+  const simulate = String(process.env.SEND_SIMULATE || '').toLowerCase();
+  if (simulate === 'invalid') {
+    return { success: false, error: 'Invalid email address (simulated)', failure: 'invalid_email', simulated: true };
+  }
+  if (simulate === 'ok') {
+    const id = `sim_${Date.now().toString(36)}`;
+    markSent(lead.id, id);
+    incrementToday();
+    return { success: true, resendId: id, simulated: true };
   }
 
   const unsubscribeUrl = `${UNSUB_BASE}/unsubscribe?email=${encodeURIComponent(lead.email)}`;
@@ -47,14 +61,16 @@ export async function sendToLead(lead) {
     });
 
     if (error) {
-      return { success: false, error: error.message || JSON.stringify(error) };
+      const message = error.message || JSON.stringify(error);
+      return { success: false, error: message, failure: classifyFailure(message) };
     }
 
     markSent(lead.id, data?.id);
     incrementToday();
     return { success: true, resendId: data?.id };
   } catch (err) {
-    return { success: false, error: err.message || 'Unknown error' };
+    const message = err.message || 'Unknown error';
+    return { success: false, error: message, failure: classifyFailure(message) };
   }
 }
 

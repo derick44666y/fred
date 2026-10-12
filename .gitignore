@@ -1,5 +1,13 @@
 node_modules/
 .env
 data.json
+data.json.migrated*
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 *.log
 .DS_Store
+leads.csv
+seeds.txt
+data.json.test-backup
+test/tmp/

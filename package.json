@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node test/crawler.test.mjs && node test/pacing.test.mjs && node test/verifier.test.mjs && node test/db.test.mjs && node test/scan-cli.test.mjs && node test/server.test.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

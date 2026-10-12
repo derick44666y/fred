@@ -17,10 +17,17 @@
       padding: 24px; max-width: 960px; margin: 0 auto;
     }
     h1 { font-size: 1.5rem; margin-bottom: 4px; }
+    h3 { font-size: 1rem; margin-bottom: 8px; }
     .muted { color: var(--muted); font-size: 0.875rem; }
     .grid {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
       gap: 12px; margin: 24px 0;
+    }
+    .find-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .find-grid { grid-template-columns: 1fr; }
     }
     .card {
       background: var(--card); border: 1px solid var(--border);
@@ -42,6 +49,11 @@
     button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
     .row { display: flex; gap: 10px; flex-wrap: wrap; }
     .row > * { flex: 1; min-width: 120px; }
+    .check {
+      display: flex; align-items: center; gap: 8px;
+      margin: 4px 0 12px; font-size: 0.875rem; color: var(--muted);
+    }
+    .check input { width: auto; margin: 0; }
     table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-top: 8px; }
     th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
     th { color: var(--muted); font-weight: 500; }
@@ -49,12 +61,33 @@
     .status.pending { background: #1e3a5f; color: #93c5fd; }
     .status.sent { background: #14532d; color: #86efac; }
     .status.unsubscribed { background: #450a0a; color: #fca5a5; }
+    /* Decision makers first: high = name confirmed, low = info@/support@... */
+    .prio { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .prio.high { background: #14532d; color: #86efac; font-weight: 600; }
+    .prio.normal { background: #262626; color: #d4d4d4; }
+    .prio.low { background: #3b2f0a; color: #fcd34d; }
+    /* Verification status: valid / catchall / invalid / unverified */
+    .verif { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .verif.valid { background: #14532d; color: #86efac; }
+    .verif.catchall { background: #3b2f0a; color: #fcd34d; }
+    .verif.invalid { background: #450a0a; color: #fca5a5; }
+    .verif.unverified { background: #262626; color: #a1a1a1; }
+    #cooldownBar {
+      background: #450a0a; color: #fecaca; border: 1px solid #7f1d1d;
+      border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; font-size: 0.875rem;
+    }
+    /* Curate column: the personalization note is the last gate before sending */
+    textarea.note {
+      font-size: 0.8rem; padding: 6px 8px; min-height: 44px;
+      min-width: 200px; margin: 0; resize: vertical;
+    }
     #log {
       font-family: ui-monospace, monospace; font-size: 0.8rem;
       background: #000; padding: 12px; border-radius: 8px;
       max-height: 180px; overflow-y: auto; margin-top: 16px; white-space: pre-wrap;
     }
     .actions { display: flex; gap: 10px; align-items: center; margin: 20px 0; flex-wrap: wrap; }
+    a { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -67,9 +100,10 @@
     <div class="card"><div class="value" id="pending">–</div><div class="label">Pending</div></div>
     <div class="card"><div class="value" id="totalSent">–</div><div class="label">Total sent</div></div>
   </div>
+  <p class="muted" id="queueMix" style="margin-top:-14px"></p>
 
   <div class="card">
-    <h3 style="margin-bottom:12px;font-size:1rem">Add Lead</h3>
+    <h3>Add Lead</h3>
     <form id="addForm">
       <div class="row">
         <input name="email" type="email" placeholder="email@company.com" required />
@@ -81,16 +115,46 @@
     </form>
   </div>
 
+  <div class="find-grid">
+    <div class="card">
+      <h3>Discover Niche</h3>
+      <p class="muted" style="margin-bottom:10px">Search API → crawl sites in the background. Personalize each lead before sending.</p>
+      <form id="discoverForm">
+        <input name="query" type="text" placeholder="Search query (e.g. Real Estate London)" required />
+        <div class="row">
+          <input name="maxSites" type="number" min="1" max="10" value="5" title="Max sites" placeholder="Max sites" />
+        </div>
+        <label class="check">
+          <input type="checkbox" name="addToLeads" checked />
+          Auto Add to Leads
+        </label>
+        <button type="submit" id="discoverBtn">Discover Niche</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Scan Site</h3>
+      <p class="muted" style="margin-bottom:10px">Crawl one site (robots.txt respected, capped pages) for publicly listed business emails.</p>
+      <form id="scanForm">
+        <input name="url" type="url" placeholder="https://their-business.com" required />
+        <button type="submit" id="scanBtn" class="secondary">Scan Site</button>
+      </form>
+    </div>
+  </div>
+
   <div class="actions">
     <button id="sendBtn">Send next 5</button>
     <button class="secondary" id="refreshBtn">Refresh</button>
+    <button class="secondary" id="clearCooldownBtn" hidden>Clear cool down</button>
     <span class="muted" id="statusMsg"></span>
   </div>
+
+  <div id="cooldownBar" hidden></div>
 
   <div class="card" style="overflow-x:auto">
     <table>
       <thead>
-        <tr><th>Email</th><th>Name</th><th>Company</th><th>Status</th><th>Sent</th></tr>
+        <tr><th>Email</th><th>Name</th><th>Company</th><th>Priority</th><th>Verified</th><th>Note</th><th>Status</th><th>Sent</th><th>Found on</th></tr>
       </thead>
       <tbody id="leadsBody"></tbody>
     </table>
@@ -104,6 +168,11 @@
       logEl.textContent = new Date().toLocaleTimeString() + '  ' + msg + '\n' + logEl.textContent;
     }
 
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
     async function loadStats() {
       const r = await fetch('/api/stats');
       const s = await r.json();
@@ -111,21 +180,64 @@
       document.getElementById('remaining').textContent = s.remaining;
       document.getElementById('pending').textContent = s.pending;
       document.getElementById('totalSent').textContent = s.totalSent;
+      const mix = s.priorityMix || { high: 0, normal: 0, low: 0 };
+      const verif = s.verificationMix || { unverified: 0, valid: 0, invalid: 0, catchall: 0 };
+      const cool = s.cooldown || { active: false };
+      document.getElementById('queueMix').textContent =
+        `Queue: ${mix.high} decision maker(s) · ${mix.normal} unconfirmed · ${mix.low} role mailbox(es)`
+        + ` · verified: ${verif.valid} valid / ${verif.catchall} catch-all / ${verif.invalid} invalid / ${verif.unverified} unverified`
+        + ` · pace: ${s.pace || ''}`;
+
+      const bar = document.getElementById('cooldownBar');
+      bar.hidden = !cool.active;
+      if (cool.active) {
+        const mins = Math.ceil((cool.remainingMs || 0) / 60000);
+        bar.textContent = `PAUSED — ${cool.reason}. Send resumes in ~${mins} min, or clear the cool down now.`;
+      }
+      document.getElementById('clearCooldownBtn').hidden = !cool.active;
     }
 
     async function loadLeads() {
       const r = await fetch('/api/leads');
       const leads = await r.json();
-      document.getElementById('leadsBody').innerHTML = leads.map(l => `
+      document.getElementById('leadsBody').innerHTML = leads.map(l => {
+        const src = l.source_url
+          ? `<a href="${escapeHtml(l.source_url)}" target="_blank" rel="noopener">source</a>`
+          : '–';
+        return `
         <tr>
-          <td>${l.email}</td>
-          <td>${l.name || '–'}</td>
-          <td>${l.company || '–'}</td>
-          <td><span class="status ${l.status}">${l.status}</span></td>
-          <td class="muted">${l.sent_at ? new Date(l.sent_at).toLocaleString() : '–'}</td>
-        </tr>
-      `).join('');
+          <td>${escapeHtml(l.email)}</td>
+          <td>${escapeHtml(l.name || '–')}</td>
+          <td>${escapeHtml(l.company || '–')}</td>
+          <td><span class="prio ${escapeHtml(l.priority || 'normal')}"
+            title="${escapeHtml(l.reason || '')}">${escapeHtml(l.priority || 'normal')}</span></td>
+          <td><span class="verif ${escapeHtml(l.verification_status || 'unverified')}"
+            title="${escapeHtml(l.verification_detail || 'no provider configured')}">${escapeHtml(l.verification_status || 'unverified')}</span></td>
+          <td><textarea class="note" data-id="${escapeHtml(l.id)}" rows="2"
+            placeholder="Why this lead?">${escapeHtml(l.notes || '')}</textarea></td>
+          <td><span class="status ${escapeHtml(l.status)}">${escapeHtml(l.status)}</span></td>
+          <td class="muted">${l.sent_at ? escapeHtml(new Date(l.sent_at).toLocaleString()) : '–'}</td>
+          <td class="muted">${src}</td>
+        </tr>`;
+      }).join('');
     }
+
+    // Curate: persist the personalization note when the field loses focus.
+    document.getElementById('leadsBody').addEventListener('change', async (e) => {
+      const el = e.target;
+      if (!el.classList || !el.classList.contains('note')) return;
+      try {
+        const r = await fetch('/api/leads/' + encodeURIComponent(el.dataset.id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: el.value })
+        });
+        const data = await r.json();
+        log(data.updated ? 'Note saved: ' + el.value.trim() : 'Note save failed: ' + (data.error || r.status));
+      } catch (err) {
+        log('Note save error: ' + err.message);
+      }
+    });
 
     document.getElementById('addForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -145,7 +257,7 @@
     document.getElementById('sendBtn').addEventListener('click', async () => {
       const btn = document.getElementById('sendBtn');
       btn.disabled = true;
-      document.getElementById('statusMsg').textContent = 'Sending...';
+      document.getElementById('statusMsg').textContent = 'Starting send job…';
       try {
         const r = await fetch('/api/send', {
           method: 'POST',
@@ -153,12 +265,186 @@
           body: JSON.stringify({ limit: 5 })
         });
         const data = await r.json();
-        log(JSON.stringify(data, null, 2));
-        document.getElementById('statusMsg').textContent = 'Attempted ' + data.attempted;
+
+        if (data.paused) {
+          log('Send refused: ' + data.message);
+          document.getElementById('statusMsg').textContent = data.message;
+        } else if (data.jobId) {
+          log(`Send job started: ${data.queued} queued · ${data.message}`);
+          await pollSendJob(data.jobId);
+        } else {
+          log(JSON.stringify(data, null, 2));
+          document.getElementById('statusMsg').textContent = data.skippedNoNote
+            ? 'Attempted ' + data.attempted + ' · ' + data.skippedNoNote + ' skipped (no note)'
+            : 'Attempted ' + data.attempted;
+        }
       } catch (err) {
         log('Error: ' + err.message);
       }
       btn.disabled = false;
+      loadStats(); loadLeads();
+    });
+
+    // The jitter engine runs in the background (a random 30–180s between
+    // emails), so the UI polls instead of holding the request open.
+    async function pollSendJob(jobId) {
+      const terminal = new Set(['done', 'error', 'cooldown', 'paused']);
+      let lastMessage = '';
+      while (true) {
+        const r = await fetch('/api/send/' + encodeURIComponent(jobId));
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'send job poll failed');
+
+        document.getElementById('statusMsg').textContent = data.message || data.status;
+        if (data.message && data.message !== lastMessage) {
+          log('  ' + data.message);
+          lastMessage = data.message;
+        }
+        if (data.results && data.results.length) {
+          const last = data.results[data.results.length - 1];
+          if (!last.success) log(`  ! ${last.email}: ${last.failure} — ${last.error}`);
+        }
+
+        await loadStats();
+        await loadLeads();
+
+        if (terminal.has(data.status)) {
+          log(`Send job finished: ${data.status}${data.cooldown && data.cooldown.active ? ' · ' + data.cooldown.reason : ''}`);
+          return data;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    }
+
+    document.getElementById('clearCooldownBtn').addEventListener('click', async () => {
+      const r = await fetch('/api/cooldown/clear', { method: 'POST' });
+      const data = await r.json();
+      log('Cool down cleared: ' + JSON.stringify(data.cooldown));
+      loadStats();
+    });
+
+    async function pollDiscoverJob(jobId, addToLeads) {
+      const terminal = new Set(['done', 'error']);
+      while (true) {
+        const r = await fetch('/api/discover/' + encodeURIComponent(jobId));
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Job poll failed');
+
+        document.getElementById('statusMsg').textContent = data.message || data.status;
+        if (data.progress?.url) {
+          log(`  [${data.progress.current}/${data.progress.total}] ${data.progress.url}`);
+        }
+
+        if (addToLeads) {
+          await loadStats();
+          await loadLeads();
+        }
+
+        if (terminal.has(data.status)) return data;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+
+    document.getElementById('discoverForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('discoverBtn');
+      const scanBtn = document.getElementById('scanBtn');
+      const fd = new FormData(e.target);
+      const query = (fd.get('query') || '').toString().trim();
+      const maxSites = Math.min(Number(fd.get('maxSites')) || 5, 10);
+      const addToLeads = e.target.querySelector('[name="addToLeads"]').checked;
+
+      btn.disabled = true;
+      scanBtn.disabled = true;
+      document.getElementById('statusMsg').textContent = 'Starting discovery…';
+      log('Discover Niche: "' + query + '" (up to ' + maxSites + ' sites, auto-add=' + addToLeads + ')');
+
+      try {
+        const r = await fetch('/api/discover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, maxSites, addToLeads })
+        });
+        const start = await r.json();
+        if (!r.ok || start.error) {
+          log('Discover error: ' + (start.error || r.status));
+        } else {
+          log('Job started: ' + start.jobId);
+          const data = await pollDiscoverJob(start.jobId, addToLeads);
+          if (data.status === 'error') {
+            log('Discover error: ' + (data.error || data.message));
+          } else {
+            log(`Discover done: ${data.sitesCrawled} site(s), ${data.totalFound} email(s) — ${data.totalFoundLowPriority || 0} low priority — ${data.totalAdded} new lead(s)`);
+            (data.seeds || []).forEach((s) => log('   seed ← ' + s));
+            (data.sites || []).forEach((site) => {
+              if (site.error) {
+                log('   ! ' + site.startUrl + ': ' + site.error);
+                return;
+              }
+              log(`   ${site.company || site.startUrl}: ${site.found} found, ${site.added} added`);
+              if (site.names && site.names.length) {
+                log('      people on site: ' + site.names.join(', '));
+              }
+              (site.emails || []).forEach((x) =>
+                log(`      [${x.priority}] ${x.email}  ← ${(x.foundOn && x.foundOn[0]) || ''}  (${x.reason})`)
+              );
+              if ((site.guesses || []).length) {
+                const g = site.guesses;
+                log(`      ${g.length} suggested (UNVERIFIED, verify before use): `
+                  + g.slice(0, 3).map((x) => x.email).join(', ')
+                  + (g.length > 3 ? ` … +${g.length - 3} more` : ''));
+              }
+            });
+            e.target.querySelector('[name="query"]').value = '';
+          }
+        }
+      } catch (err) {
+        log('Error: ' + err.message);
+      }
+
+      btn.disabled = false;
+      scanBtn.disabled = false;
+      document.getElementById('statusMsg').textContent = '';
+      loadStats(); loadLeads();
+    });
+
+    document.getElementById('scanForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('scanBtn');
+      const discoverBtn = document.getElementById('discoverBtn');
+      const fd = new FormData(e.target);
+      const url = fd.get('url');
+      btn.disabled = true;
+      discoverBtn.disabled = true;
+      document.getElementById('statusMsg').textContent = 'Scanning (can take a minute)...';
+      log('Scanning ' + url);
+      try {
+        const r = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, addToLeads: true })
+        });
+        const data = await r.json();
+        if (data.error) {
+          log('Scan error: ' + data.error);
+        } else {
+          log(`Scanned ${data.pagesScanned} page(s): ${data.foundPriority || 0} priority + ${data.foundLowPriority || 0} low-priority address(es), ${data.added} new lead(s)`);
+          if (data.names && data.names.length) log('   people on site: ' + data.names.join(', '));
+          data.emails.forEach(x => log(`   [${x.priority}] ${x.email}  ← ${x.foundOn[0]}  (${x.reason})`));
+          if ((data.guesses || []).length) {
+            const g = data.guesses;
+            log(`   ${g.length} suggested (UNVERIFIED, verify before use): `
+              + g.slice(0, 3).map((x) => x.email).join(', ')
+              + (g.length > 3 ? ` … +${g.length - 3} more` : ''));
+          }
+          e.target.reset();
+        }
+      } catch (err) {
+        log('Error: ' + err.message);
+      }
+      btn.disabled = false;
+      discoverBtn.disabled = false;
+      document.getElementById('statusMsg').textContent = '';
       loadStats(); loadLeads();
     });
 
