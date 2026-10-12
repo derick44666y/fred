@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cold Outreach</title>
+  <style>
+    :root {
+      --bg: #0a0a0a; --card: #141414; --border: #262626;
+      --text: #ededed; --muted: #a1a1a1; --accent: #3b82f6;
+      --green: #22c55e; --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.5;
+      padding: 24px; max-width: 960px; margin: 0 auto;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 4px; }
+    .muted { color: var(--muted); font-size: 0.875rem; }
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px; margin: 24px 0;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px;
+    }
+    .card .value { font-size: 1.75rem; font-weight: 600; }
+    .card .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    input, textarea, button {
+      font: inherit; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--card); color: var(--text); padding: 10px 14px;
+    }
+    input, textarea { width: 100%; margin-bottom: 10px; }
+    button {
+      background: var(--accent); border: none; color: #fff;
+      cursor: pointer; font-weight: 500; padding: 10px 18px;
+    }
+    button:hover { opacity: .9; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 120px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-top: 8px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; }
+    .status { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; }
+    .status.pending { background: #1e3a5f; color: #93c5fd; }
+    .status.sent { background: #14532d; color: #86efac; }
+    .status.unsubscribed { background: #450a0a; color: #fca5a5; }
+    #log {
+      font-family: ui-monospace, monospace; font-size: 0.8rem;
+      background: #000; padding: 12px; border-radius: 8px;
+      max-height: 180px; overflow-y: auto; margin-top: 16px; white-space: pre-wrap;
+    }
+    .actions { display: flex; gap: 10px; align-items: center; margin: 20px 0; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <h1>Cold Outreach</h1>
+  <p class="muted">Resend · ~50/day · personalization first</p>
+
+  <div class="grid">
+    <div class="card"><div class="value" id="sentToday">–</div><div class="label">Sent today</div></div>
+    <div class="card"><div class="value" id="remaining">–</div><div class="label">Remaining</div></div>
+    <div class="card"><div class="value" id="pending">–</div><div class="label">Pending</div></div>
+    <div class="card"><div class="value" id="totalSent">–</div><div class="label">Total sent</div></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:12px;font-size:1rem">Add Lead</h3>
+    <form id="addForm">
+      <div class="row">
+        <input name="email" type="email" placeholder="email@company.com" required />
+        <input name="name" placeholder="Name" />
+        <input name="company" placeholder="Company" />
+      </div>
+      <textarea name="notes" rows="2" placeholder="Personalization note (e.g. mobile site is slow)"></textarea>
+      <button type="submit">Add Lead</button>
+    </form>
+  </div>
+
+  <div class="actions">
+    <button id="sendBtn">Send next 5</button>
+    <button class="secondary" id="refreshBtn">Refresh</button>
+    <span class="muted" id="statusMsg"></span>
+  </div>
+
+  <div class="card" style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr><th>Email</th><th>Name</th><th>Company</th><th>Status</th><th>Sent</th></tr>
+      </thead>
+      <tbody id="leadsBody"></tbody>
+    </table>
+  </div>
+
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    function log(msg) {
+      logEl.textContent = new Date().toLocaleTimeString() + '  ' + msg + '\n' + logEl.textContent;
+    }
+
+    async function loadStats() {
+      const r = await fetch('/api/stats');
+      const s = await r.json();
+      document.getElementById('sentToday').textContent = s.sentToday;
+      document.getElementById('remaining').textContent = s.remaining;
+      document.getElementById('pending').textContent = s.pending;
+      document.getElementById('totalSent').textContent = s.totalSent;
+    }
+
+    async function loadLeads() {
+      const r = await fetch('/api/leads');
+      const leads = await r.json();
+      document.getElementById('leadsBody').innerHTML = leads.map(l => `
+        <tr>
+          <td>${l.email}</td>
+          <td>${l.name || '–'}</td>
+          <td>${l.company || '–'}</td>
+          <td><span class="status ${l.status}">${l.status}</span></td>
+          <td class="muted">${l.sent_at ? new Date(l.sent_at).toLocaleString() : '–'}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('addForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = Object.fromEntries(fd.entries());
+      const r = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await r.json();
+      log(data.added ? 'Added ' + body.email : 'Already exists: ' + body.email);
+      e.target.reset();
+      loadStats(); loadLeads();
+    });
+
+    document.getElementById('sendBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('sendBtn');
+      btn.disabled = true;
+      document.getElementById('statusMsg').textContent = 'Sending...';
+      try {
+        const r = await fetch('/api/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 5 })
+        });
+        const data = await r.json();
+        log(JSON.stringify(data, null, 2));
+        document.getElementById('statusMsg').textContent = 'Attempted ' + data.attempted;
+      } catch (err) {
+        log('Error: ' + err.message);
+      }
+      btn.disabled = false;
+      loadStats(); loadLeads();
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      loadStats(); loadLeads();
+    });
+
+    loadStats();
+    loadLeads();
+  </script>
+</body>
+</html>
